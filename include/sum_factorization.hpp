@@ -25,6 +25,7 @@ struct SumFactorizationKernel
 
     using LocalArray = std::array<double, ndofs>;
     using QPointArray = std::array<double, nqp>;
+    using QPointDiagonal = std::array<double, nqp>;
     using QPointMatrix = std::array<double, Dsize>;
     using Extract1D = std::array<double, extractsize>;
     using Basis1D = std::array<double, Bsize>;
@@ -101,6 +102,15 @@ struct SumFactorizationKernel
         // Applies the quadrature-space operator y = D x.
         // This is the intended replacement point for a future libxsmm kernel.
         apply_dense_matvec<false>(D.data(), values_q.data(), weighted_q.data(), nqp, nqp);
+    }
+
+    static void apply_quadrature_operator_diagonal(
+        const QPointArray& values_q,
+        const QPointDiagonal& D_diag,
+        QPointArray& weighted_q)
+    {
+        for (int q = 0; q < nqp; ++q)
+            weighted_q[q] = D_diag[q] * values_q[q];
     }
 
     static void apply_extraction_transpose(
@@ -393,6 +403,26 @@ struct SumFactorizationKernel
         apply_extraction_transpose(u_spline, C, u_bernstein);
         evaluate_values_bernstein(u_bernstein, B, values_q);
         apply_quadrature_operator(values_q, D, weighted_q);
+        integrate_values_bernstein(weighted_q, B, v_bernstein);
+        apply_extraction(v_bernstein, C, v_spline);
+    }
+
+    static void apply_mass_diagonal(
+        const LocalArray& u_spline,
+        const std::array<Extract1D, dim>& C,
+        const std::array<Basis1D, dim>& B,
+        const QPointDiagonal& D_diag,
+        LocalArray& v_spline)
+    {
+        // Computes v = C * B^T * diag(D_diag) * B * C^T * u.
+        LocalArray u_bernstein{};
+        LocalArray v_bernstein{};
+        QPointArray values_q{};
+        QPointArray weighted_q{};
+
+        apply_extraction_transpose(u_spline, C, u_bernstein);
+        evaluate_values_bernstein(u_bernstein, B, values_q);
+        apply_quadrature_operator_diagonal(values_q, D_diag, weighted_q);
         integrate_values_bernstein(weighted_q, B, v_bernstein);
         apply_extraction(v_bernstein, C, v_spline);
     }
